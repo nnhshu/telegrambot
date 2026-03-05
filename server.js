@@ -28,6 +28,11 @@ const ADMIN_SECRET   = process.env.ADMIN_SECRET   || WEBHOOK_SECRET; // để b�
 const PORT           = process.env.PORT || 8000;
 const WORDPRESS_URL  = process.env.WORDPRESS_URL || 'https://buffupnow.com';
 
+// ── Media group buffer (gom ảnh album trước khi xử lý) ───────
+// Key: media_group_id, Value: { timer, photos: [], caption, chatId, fromName, teamEntry }
+const mediaGroupBuffer = new Map();
+const MEDIA_GROUP_DELAY = 1500; // ms chờ sau ảnh cuối cùng
+
 // ── Groups manager ────────────────────────────────────────────
 const GROUPS_FILE = path.join(__dirname, 'groups.json');
 
@@ -736,6 +741,67 @@ app.post('/webhook/new-order', async (req, res) => {
     }
 });
 
+// ── Xử lý nhóm ảnh (1 hoặc nhiều) từ Team → forward + upload WP ──
+async function processPhotoGroup(fileIds, caption, fromName, teamEntry) {
+    const teamLabel = teamEntry[1].label;
+    const total     = getTotalGroup();
+    if (!total?.id) return;
+
+    const orderMatch  = caption.match(/#?(\d+)/);
+    const orderNumber = orderMatch ? orderMatch[1] : null;
+
+    const forwardCaption = orderNumber
+        ? `🖼 *Ảnh xác nhận từ ${teamLabel}*\nĐơn #${orderNumber} — bởi ${fromName}`
+        : `🖼 *Ảnh xác nhận từ ${teamLabel}* — bởi ${fromName}`;
+
+    try {
+        if (fileIds.length === 1) {
+            await tgPost('sendPhoto', {
+                chat_id:    total.id,
+                photo:      fileIds[0],
+                caption:    forwardCaption,
+                parse_mode: 'Markdown',
+            });
+        } else {
+            const media = fileIds.slice(0, 10).map((fid, idx) => ({
+                type:  'photo',
+                media: fid,
+                ...(idx === 0 ? { caption: forwardCaption, parse_mode: 'Markdown' } : {}),
+            }));
+            await tgPost('sendMediaGroup', { chat_id: total.id, media });
+        }
+        console.log(`📸 Forward ${fileIds.length} ảnh từ ${teamLabel} → Tổng (order: ${orderNumber || 'unknown'})`);
+
+        if (orderNumber) {
+            const uploadResults = [];
+            for (let i = 0; i < fileIds.length; i++) {
+                try {
+                    const fileUrl  = await getTelegramFileUrl(fileIds[i]);
+                    const fileName = `receipt_${orderNumber}_${Date.now()}_${i + 1}.jpg`;
+                    const result   = await uploadReceiptToWP(orderNumber, fileUrl, fileName, `${fromName} (${teamLabel})`);
+                    uploadResults.push(result.attachment_id);
+                    console.log(`✅ Auto-uploaded receipt: order #${orderNumber}, attachment #${result.attachment_id}`);
+                } catch (uploadErr) {
+                    console.error(`❌ Upload ảnh ${i + 1} thất bại: ${uploadErr.message}`);
+                }
+            }
+
+            if (uploadResults.length > 0) {
+                await sendMessage(total.id,
+                    `✅ ${uploadResults.length} ảnh đơn *#${orderNumber}* đã tự động lưu vào WP`
+                );
+            }
+            if (uploadResults.length < fileIds.length) {
+                await sendMessage(total.id,
+                    `⚠️ ${fileIds.length - uploadResults.length}/${fileIds.length} ảnh lưu WP thất bại cho đơn *#${orderNumber}*`
+                );
+            }
+        }
+    } catch (e) {
+        console.error('❌ Forward ảnh failed:', e.message);
+    }
+}
+
 // ── POST /telegram-callback ───────────────────────────────────
 
 app.post('/telegram-callback', async (req, res) => {
@@ -909,56 +975,35 @@ app.post('/telegram-callback', async (req, res) => {
             return;
         }
 
-        const teamLabel   = teamEntry[1].label;
-        const total       = getTotalGroup();
-        if (!total?.id) return;
-
-        // Lấy ảnh chất lượng cao nhất (phần tử cuối mảng photo)
+        // Lấy file_id ảnh chất lượng cao nhất
         const photoArr  = msg.photo;
         const bestPhoto = photoArr[photoArr.length - 1].file_id;
+        const mediaGroupId = msg.media_group_id;
 
-        // Tìm order number từ caption (format: "#3286" hoặc "3286")
-        const orderMatch = caption.match(/#?(\d+)/);
-        const orderNumber = orderMatch ? orderMatch[1] : null;
-
-        const forwardCaption = orderNumber
-            ? `🖼 *Ảnh xác nhận từ ${teamLabel}*
-Đơn #${orderNumber} — bởi ${fromName}`
-            : `🖼 *Ảnh xác nhận từ ${teamLabel}* — bởi ${fromName}`;
-
-        try {
-            const fileId = bestPhoto;
-
-            // 1. Forward ảnh về Group Tổng (không có button)
-            await tgPost('sendPhoto', {
-                chat_id:    total.id,
-                photo:      fileId,
-                caption:    forwardCaption,
-                parse_mode: 'Markdown',
-            });
-            console.log(`📸 Forward ảnh từ ${teamLabel} → Tổng (order: ${orderNumber || 'unknown'})`);
-
-            // 2. Tự động upload lên WP nếu biết order number
-            if (orderNumber) {
-                try {
-                    const fileUrl  = await getTelegramFileUrl(fileId);
-                    const fileName = `receipt_${orderNumber}_${Date.now()}.jpg`;
-                    const result   = await uploadReceiptToWP(orderNumber, fileUrl, fileName, `${fromName} (${teamLabel})`);
-                    console.log(`✅ Auto-uploaded receipt: order #${orderNumber}, attachment #${result.attachment_id}`);
-
-                    // Thông báo nhỏ về Group Tổng
-                    await sendMessage(total.id,
-                        `✅ Ảnh đơn *#${orderNumber}* đã tự động lưu vào WP (attachment #${result.attachment_id})`
-                    );
-                } catch (uploadErr) {
-                    console.error(`❌ Auto-upload WP failed: ${uploadErr.message}`);
-                    await sendMessage(total.id,
-                        `⚠️ Forward OK nhưng lưu WP thất bại cho đơn *#${orderNumber}*: ${uploadErr.message}`
-                    );
-                }
+        if (mediaGroupId) {
+            // Nhiều ảnh album — gom vào buffer, xử lý sau khi hết ảnh
+            if (!mediaGroupBuffer.has(mediaGroupId)) {
+                mediaGroupBuffer.set(mediaGroupId, {
+                    photos:    [],
+                    caption:   '',
+                    fromName,
+                    teamEntry,
+                    timer:     null,
+                });
             }
-        } catch (e) {
-            console.error('❌ Forward ảnh failed:', e.message);
+            const buf = mediaGroupBuffer.get(mediaGroupId);
+            buf.photos.push(bestPhoto);
+            if (caption) buf.caption = caption; // chỉ ảnh đầu có caption
+
+            // Reset timer mỗi khi nhận thêm ảnh
+            clearTimeout(buf.timer);
+            buf.timer = setTimeout(async () => {
+                mediaGroupBuffer.delete(mediaGroupId);
+                await processPhotoGroup(buf.photos, buf.caption, buf.fromName, buf.teamEntry);
+            }, MEDIA_GROUP_DELAY);
+        } else {
+            // Ảnh đơn lẻ — xử lý ngay
+            await processPhotoGroup([bestPhoto], caption, fromName, teamEntry);
         }
         return;
     }
