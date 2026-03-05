@@ -1,0 +1,52 @@
+# ==========================================
+# TELEGRAM BOT CONFIGURATION
+# ==========================================
+# Bot Token từ @BotFather
+TELEGRAM_BOT_TOKEN=8522410795:AAGNkpyLclx-pPwPA_VFvK5HXlWb-31EXI8
+
+# ── Groups ──────────────────────────────
+# Group Vận đơn Tổng — tất cả đơn mới vào đây
+TELEGRAM_GROUP_TOTAL_ID=-5210766160
+
+# Group các Team — admin chọn tay chuyển từ Group Tổng sang
+# Cách lấy Chat ID: thêm bot vào group → gọi https://api.telegram.org/bot<TOKEN>/getUpdates
+TELEGRAM_GROUP_TEAM_A_ID=-5201171993          # Chat ID Group Team A
+TELEGRAM_GROUP_TEAM_B_ID=-5233041289          # Chat ID Group Team B
+TELEGRAM_GROUP_TEAM_C_ID=          # Chat ID Group Team C
+
+# Danh sách Telegram ID của admin (cách nhau bởi dấu phẩy)
+ADMIN_IDS=7060912779,860748460
+
+# ==========================================
+# WORDPRESS CONFIGURATION
+# ==========================================
+WORDPRESS_URL=https://buffupnow.com
+WORDPRESS_API_KEY=055a262af4e1bc0da42106dc431117a588bcdd9d2ca21e1582328533c114ada6
+
+# ==========================================
+# BOT SERVER CONFIGURATION
+# ==========================================
+# Secret key xác thực webhook từ WordPress (phải khớp với WP plugin setting)
+WEBHOOK_SECRET=37b7ca3bc73c053149a6a79c6486313f70c5882b519723aa43ae84863558881c
+BOT_WEBHOOK_SECRET=37b7ca3bc73c053149a6a79c6486313f70c5882b519723aa43ae84863558881c
+
+# URL public của bot server (Telegram sẽ gọi vào đây để gửi callback)
+WEBHOOK_URL=https://demo.buffupnow.com
+
+# Port Express server
+PORT=8000
+SERVER_PORT=8000
+
+# ==========================================
+# DATABASE CONFIGURATION
+# ==========================================
+DB_HOST=localhost
+DB_NAME=ihafrynd_telegram_orders
+DB_USER=ihafrynd_telegram_bot
+DB_PASSWORD=TelegramBot123
+
+# ==========================================
+# PRODUCTION SETTINGS
+# ==========================================
+NODE_ENV=production
+LOG_LEVEL=info

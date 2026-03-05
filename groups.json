@@ -1,0 +1,22 @@
+{
+  "total": {
+    "id": "-5210766160",
+    "label": "Vận đơn Tổng",
+    "type": "total"
+  },
+  "team_a": {
+    "id": "-5201171993",
+    "label": "Team A",
+    "type": "team"
+  },
+  "team_b": {
+    "id": "-5233041289",
+    "label": "Team B",
+    "type": "team"
+  },
+  "payment": {
+    "id": "-5237182299",
+    "label": "Duyệt Thanh Toán",
+    "type": "payment"
+  }
+}
