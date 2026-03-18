@@ -696,10 +696,10 @@ app.post('/webhook/new-order', async (req, res) => {
         const order = req.body;
         if (!order.order_id) return res.status(400).json({ error: 'Missing order_id' });
 
-        // Bỏ qua đơn on-hold (chưa thanh toán)
-        if (order.status === 'on-hold') {
-            console.log(`⏭️  Bỏ qua đơn #${order.order_number_raw || order.order_id} — status on-hold`);
-            return res.json({ success: true, skipped: true, reason: 'on-hold' });
+        // Bỏ qua đơn chưa thanh toán (on-hold hoặc pending)
+        if (order.status === 'on-hold' || order.status === 'pending') {
+            console.log(`⏭️  Bỏ qua đơn #${order.order_number_raw || order.order_id} — status ${order.status} (chưa thanh toán)`);
+            return res.json({ success: true, skipped: true, reason: order.status });
         }
 
         const orderNumber = order.order_number_raw || order.order_id;
