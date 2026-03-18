@@ -5,7 +5,11 @@
     "type": "total"
   },
   "team_a": {
+<<<<<<< HEAD
     "id": "-5201171993",
+=======
+    "id": "-1003814478854",
+>>>>>>> 142f320 (up)
     "label": "Team A",
     "type": "team"
   },
@@ -19,4 +23,8 @@
     "label": "Duyệt Thanh Toán",
     "type": "payment"
   }
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 142f320 (up)
