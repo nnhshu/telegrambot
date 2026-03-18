@@ -1044,11 +1044,41 @@ app.post('/telegram-callback', async (req, res) => {
 
 ${statusText}`, []);
 
-                // Nếu approve → gửi đơn vào Group Tổng luôn
+                // Nếu approve → gửi đơn vào Group Vận đơn Tổng
                 if (action === 'approve') {
-                    await sendMessage(chatId,
-                        `✅ Đơn *#${orderNumber}* đã được duyệt thanh toán — chuyển sang *processing*`
-                    );
+                    const total = getTotalGroup();
+                    if (total?.id) {
+                        // Lấy orderText từ tracked hoặc fetch lại từ WP
+                        let orderText = tracked?.orderText || '';
+                        if (!orderText) {
+                            try {
+                                const wpRes = await axios.get(
+                                    `${WORDPRESS_URL}/wp-json/telegram-orders/v1/order/${orderNumber}`,
+                                    { headers: { 'Authorization': `Bearer ${WEBHOOK_SECRET}` }, timeout: 10000 }
+                                );
+                                orderText = formatOrderMessage(wpRes.data, total.label);
+                                trackOrder(orderNumber, { orderText });
+                            } catch (fetchErr) {
+                                console.error(`❌ Cannot fetch order for total forward: ${fetchErr.message}`);
+                                orderText = `📦 Đơn *#${orderNumber}* — đã duyệt thanh toán`;
+                            }
+                        }
+
+                        const totalMsgId = await sendMessage(total.id, orderText, keyboardTotal(orderNumber));
+
+                        // Forward ảnh đơn hàng sang Tổng (nếu có)
+                        const images = tracked?.customerImages || [];
+                        if (images.length > 0) {
+                            images.length === 1
+                                ? await sendPhoto(total.id, images[0])
+                                : await sendMediaGroup(total.id, images);
+                        }
+
+                        trackOrder(orderNumber, { totalMsgId, orderText });
+                        console.log(`✅ Đơn #${orderNumber} đã chuyển sang ${total.label} — msg_id: ${totalMsgId}`);
+                    } else {
+                        console.warn('⚠️  Group Tổng chưa cấu hình, không thể forward đơn');
+                    }
                 } else {
                     await sendMessage(chatId,
                         `❌ Đơn *#${orderNumber}* bị từ chối thanh toán — đã hủy`
